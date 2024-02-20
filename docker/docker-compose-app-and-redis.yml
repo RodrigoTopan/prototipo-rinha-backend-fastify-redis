@@ -1,0 +1,25 @@
+version: "3.5"
+
+services:
+  api01:
+    build: ..
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis-server
+    environment:
+      - REDIS_CONNECTION_URL=redis://redis-server:6379
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "150MB"
+  redis-server:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.33"
+          memory: "240MB"
