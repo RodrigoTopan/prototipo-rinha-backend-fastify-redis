@@ -1,5 +1,5 @@
 require("dotenv").config();
-require("./redis/seed");
+require("./cassandra/seed");
 const Fastify = require("fastify");
 
 const fastify = Fastify();

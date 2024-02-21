@@ -1,5 +1,5 @@
 const { z } = require("zod");
-const redis = require("./redis/connection");
+const cassandraClient = require("./cassandra/connection");
 
 const transactionSchema = z.object({
   id: z.number().int().positive(),
@@ -25,19 +25,21 @@ async function handleTransactions(request, reply) {
     return reply.code(422).send({ error: error.errors });
   }
 
-  const cliente = await getCache(id, reply);
+  const cliente = await getFromCassandra(id, reply);
   if (!cliente) return;
 
+
   if (tipo === "d") {
-    if (cliente.saldo.total - valor < cliente.saldo.limite * -1) {
+    if (cliente.saldo_total - valor < cliente.limite * -1) {
       return reply.code(422).send({
         error: "Transação de débito inválida. Saldo ficaria inconsistente."
       });
     }
-    cliente.saldo.total -= valor;
+    cliente.saldo_total -= valor;
   } else if (tipo === "c") {
-    cliente.saldo.total += valor;
+    cliente.saldo_total += valor;
   }
+
 
   const transacao = {
     valor,
@@ -50,13 +52,15 @@ async function handleTransactions(request, reply) {
   cliente.ultimas_transacoes.sort((a, b) => new Date(b.realizada_em) - new Date(a.realizada_em));
   cliente.ultimas_transacoes = cliente.ultimas_transacoes.slice(0, 10);
 
-  await cache(id, cliente);
+
+  await saveToCassandra(id, cliente);
 
   return {
-    saldo: cliente.saldo.total,
-    limite: cliente.saldo.limite
+    saldo: cliente.saldo_total,
+    limite: cliente.limite
   };
 }
+
 
 async function handleBankStatement(request, reply) {
   const { id } = request.params;
@@ -67,25 +71,73 @@ async function handleBankStatement(request, reply) {
     return reply.code(422).send({ error: error.errors });
   }
 
-  const cliente = await getCache(id, reply);
+  const cliente = await getFromCassandra(id, reply);
   if (!cliente) return;
 
-  return cliente;
+
+  const saldo = {
+    total: cliente.saldo_total,
+    data_extrato: new Date().toISOString(),
+    limite: cliente.limite
+  };
+
+  const ultimas_transacoes = cliente.ultimas_transacoes.map(transacao => {
+    return {
+      valor: transacao.valor,
+      tipo: transacao.tipo,
+      descricao: transacao.descricao,
+      realizada_em: transacao.realizada_em
+    };
+  });
+
+
+  return {
+    saldo,
+    ultimas_transacoes
+  };
 }
 
-async function getCache(id, reply) {
-  const key = `cliente:${id}`;
-  const value = await redis.get(key);
-  if (!value) {
-    reply.code(404).send();
+async function getFromCassandra(id, reply) {
+  const query = 'SELECT * FROM accounts WHERE id = ?';
+  const params = [parseInt(id)];
+
+  try {
+    const result = await cassandraClient.execute(query, params, { prepare: true });
+    if (!result.rows.length) {
+      reply.code(404).send({ error: "Cliente não encontrado" });
+      return null;
+    }
+    
+    let { id: clientId, saldo_total, limite, ultimas_transacoes } = result.rows[0];
+    ultimas_transacoes = ultimas_transacoes || []
+    ultimas_transacoes = ultimas_transacoes.map(transacao => JSON.parse(transacao));
+  
+    const clientData = {
+      id: clientId,
+      saldo_total,
+      limite,
+      ultimas_transacoes
+    };
+    return clientData;
+  } catch (error) {
+    console.error("Erro ao buscar cliente no Cassandra:", error);
+    reply.code(500).send({ error: "Erro interno do servidor" });
     return null;
   }
-  return JSON.parse(value);
 }
 
-async function cache(id, cliente) {
-  const key = `cliente:${id}`;
-  await redis.set(key, JSON.stringify(cliente));
+
+async function saveToCassandra(id, cliente) {
+  const query = 'UPDATE accounts SET saldo_total = ?, ultimas_transacoes = ? WHERE id = ?';
+  const transacoes = cliente.ultimas_transacoes.map(transacao => JSON.stringify(transacao));
+  const params = [cliente.saldo_total, transacoes, parseInt(id)];
+
+  try {
+    await cassandraClient.execute(query, params, { prepare: true });
+  } catch (error) {
+    console.error("Erro ao salvar cliente no Cassandra:", error);
+  
+  }
 }
 
 module.exports = async function routes(fastify, _) {
