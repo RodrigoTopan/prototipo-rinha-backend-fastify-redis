@@ -8,7 +8,7 @@ class CassandraConnection {
   async connect() {
     try {
       this.client = new Client({
-        contactPoints: ['localhost'], 
+        contactPoints: [process.env.CASSANDRA_CONTACT_POINTS], 
         localDataCenter: 'datacenter1',
         keyspace: 'accounts'
       });
