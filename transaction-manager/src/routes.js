@@ -1,14 +1,25 @@
-const { z } = require("zod");
-const memcached = require("./memcached/connection");
+const clientesData = [];
 
-const transactionSchema = z.object({
-  id: z.number().int().positive(),
-  valor: z.number().int().positive(),
-  tipo: z.enum(["c", "d"]),
-  descricao: z.string().min(1).max(10)
-});
+// Função para gerar contas de cliente padrão
+function generateAccounts() {
+  return [
+    { saldo: { total: 0, limite: 100000 }, ultimas_transacoes: [] },
+    { saldo: { total: 0, limite: 80000 }, ultimas_transacoes: [] },
+    { saldo: { total: 0, limite: 1000000 }, ultimas_transacoes: [] },
+    { saldo: { total: 0, limite: 10000000 }, ultimas_transacoes: [] },
+    { saldo: { total: 0, limite: 500000 }, ultimas_transacoes: [] }
+  ];
+}
 
-const bankStatementSchema = z.number().int().positive();
+function loadDefaultAccounts() {
+  const accounts = generateAccounts();
+  accounts.forEach((account, index) => {
+    const id = index + 1; // IDs começam de 1
+    clientesData.push({ id, ...account });
+  });
+}
+
+loadDefaultAccounts();
 
 async function handlePing(request, reply) {
   console.log("pong");
@@ -19,14 +30,11 @@ async function handleTransactions(request, reply) {
   const { id } = request.params;
   const { valor, tipo, descricao } = request.body;
 
-  try {
-    transactionSchema.parse({ id: parseInt(id), valor, tipo, descricao });
-  } catch (error) {
-    return reply.code(422).send({ error: error.errors });
+  const clienteIndex = parseInt(id) - 1;
+  const cliente = clientesData[clienteIndex];
+  if (!cliente) {
+    return reply.code(404).send();
   }
-
-  const cliente = await getCache(id, reply);
-  if (!cliente) return;
 
   if (tipo === "d") {
     if (cliente.saldo.total - valor < cliente.saldo.limite * -1) {
@@ -47,12 +55,7 @@ async function handleTransactions(request, reply) {
   };
 
   cliente.ultimas_transacoes.unshift(transacao);
-  cliente.ultimas_transacoes.sort(
-    (a, b) => new Date(b.realizada_em) - new Date(a.realizada_em)
-  );
-  cliente.ultimas_transacoes = cliente.ultimas_transacoes.slice(0, 10);
-
-  await cache(id, cliente);
+  cliente.ultimas_transacoes = cliente.ultimas_transacoes.slice(0, 10); // Limitar a 10 transações diretamente
 
   return {
     saldo: cliente.saldo.total,
@@ -63,48 +66,13 @@ async function handleTransactions(request, reply) {
 async function handleBankStatement(request, reply) {
   const { id } = request.params;
 
-  try {
-    bankStatementSchema.parse(parseInt(id));
-  } catch (error) {
-    return reply.code(422).send({ error: error.errors });
+  const clienteIndex = parseInt(id) - 1;
+  const cliente = clientesData[clienteIndex];
+  if (!cliente) {
+    return reply.code(404).send();
   }
 
-  const cliente = await getCache(id, reply);
-  if (!cliente) return;
-
   return cliente;
-}
-
-async function getCache(id, reply) {
-  return new Promise((resolve, reject) => {
-    memcached.get(`cliente:${id}`, (err, data) => {
-      if (err) {
-        console.error("Memcached error:", err);
-        reply.code(500).send({ error: "Internal server error" });
-        reject(err);
-      } else {
-        if (data) {
-          resolve(JSON.parse(data));
-        } else {
-          reply.code(404).send();
-          resolve(null);
-        }
-      }
-    });
-  });
-}
-
-async function cache(id, cliente) {
-  return new Promise((resolve, reject) => {
-    memcached.set(`cliente:${id}`, JSON.stringify(cliente), 3600, err => {
-      if (err) {
-        console.error("Memcached error:", err);
-        reject(err);
-      } else {
-        resolve();
-      }
-    });
-  });
 }
 
 module.exports = async function routes(fastify, _) {

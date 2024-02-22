@@ -1,5 +1,4 @@
 require("dotenv").config();
-require("./memcached/seed")
 const Fastify = require("fastify");
 
 const fastify = Fastify();
@@ -13,7 +12,7 @@ const startServer = async () => {
   } catch (error) {
     console.error("Erro ao iniciar o servidor:", error);
     process.exit(1);
-}
+  }
 };
 
 startServer();
