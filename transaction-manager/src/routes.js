@@ -1,5 +1,5 @@
 const { z } = require("zod");
-const redis = require("./redis/connection");
+const memcached = require("./memcached/connection");
 
 const transactionSchema = z.object({
   id: z.number().int().positive(),
@@ -47,7 +47,9 @@ async function handleTransactions(request, reply) {
   };
 
   cliente.ultimas_transacoes.unshift(transacao);
-  cliente.ultimas_transacoes.sort((a, b) => new Date(b.realizada_em) - new Date(a.realizada_em));
+  cliente.ultimas_transacoes.sort(
+    (a, b) => new Date(b.realizada_em) - new Date(a.realizada_em)
+  );
   cliente.ultimas_transacoes = cliente.ultimas_transacoes.slice(0, 10);
 
   await cache(id, cliente);
@@ -74,18 +76,35 @@ async function handleBankStatement(request, reply) {
 }
 
 async function getCache(id, reply) {
-  const key = `cliente:${id}`;
-  const value = await redis.get(key);
-  if (!value) {
-    reply.code(404).send();
-    return null;
-  }
-  return JSON.parse(value);
+  return new Promise((resolve, reject) => {
+    memcached.get(`cliente:${id}`, (err, data) => {
+      if (err) {
+        console.error("Memcached error:", err);
+        reply.code(500).send({ error: "Internal server error" });
+        reject(err);
+      } else {
+        if (data) {
+          resolve(JSON.parse(data));
+        } else {
+          reply.code(404).send();
+          resolve(null);
+        }
+      }
+    });
+  });
 }
 
 async function cache(id, cliente) {
-  const key = `cliente:${id}`;
-  await redis.set(key, JSON.stringify(cliente));
+  return new Promise((resolve, reject) => {
+    memcached.set(`cliente:${id}`, JSON.stringify(cliente), 3600, err => {
+      if (err) {
+        console.error("Memcached error:", err);
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
+  });
 }
 
 module.exports = async function routes(fastify, _) {

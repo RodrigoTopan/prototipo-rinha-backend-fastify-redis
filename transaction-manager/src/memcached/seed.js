@@ -1,4 +1,4 @@
-const redis = require("./connection");
+const memcached = require("./connection");
 
 class Seed {
   constructor() {
@@ -8,10 +8,9 @@ class Seed {
   async execute() {
     try {
       const accounts = this.generateAccounts();
-      const multi = redis.multi();
-      await this.load(multi, accounts);
+      await this.load(accounts);
     } catch (error) {
-      console.error("Erro ao carregar chaves iniciais no redis:", error);
+      console.error("Erro ao carregar chaves iniciais no Memcached:", error);
     }
   }
 
@@ -25,27 +24,18 @@ class Seed {
     ];
   }
 
-  async load(multi, accounts) {
+  async load(accounts) {
     for (let i = 0; i < accounts.length; i++) {
       const clientKey = `cliente:${i + 1}`;
       const accountData = JSON.stringify(accounts[i]);
-      multi.setNX(clientKey, accountData);
+      memcached.set(clientKey, accountData, 0, err => {
+        if (err) {
+          console.error(`Erro ao definir chave ${clientKey} no Memcached:`, err);
+        } else {
+          console.log(`Chave ${clientKey} definida no Memcached`);
+        }
+      });
     }
-
-    multi.exec((err, replies) => {
-      if (err) {
-        console.error("Erro ao definir chaves no redis:", err);
-      } else {
-        replies.forEach((reply, index) => {
-          const clientKey = `cliente:${index + 1}`;
-          if (reply === 1) {
-            console.log(`Chave ${clientKey} definida no redis`);
-          } else {
-            console.log(`Chave ${clientKey} já existente no redis`);
-          }
-        });
-      }
-    });
   }
 }
 

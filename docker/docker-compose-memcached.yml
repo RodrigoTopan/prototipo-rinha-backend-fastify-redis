@@ -23,13 +23,13 @@ services:
       - "8082:8080"
 
   transaction-manager:
-    image: rodrigotopan/rinha-backend-transaction-manager:0.0.1
+    image: rodrigotopan/rinha-backend-transaction-manager:0.0.3
     ports:
       - "9000:9000"
     depends_on:
-      - redis-server
+      - memcached
     environment:
-      - REDIS_CONNECTION_URL=redis://redis-server:6379
+      - MEMCACHED_CONNECTION_URL=memcached:11211
     deploy:
       resources:
         limits:
@@ -51,10 +51,10 @@ services:
           cpus: "0.17"
           memory: "10MB"
 
-  redis-server:
-    image: redis:alpine
+  memcached:
+    image: memcached:alpine # Usando a imagem do Memcached
     ports:
-      - "6379:6379"
+      - "11211:11211" # Mapeamento da porta padrão do Memcached
     deploy:
       resources:
         limits:

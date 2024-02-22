@@ -23,18 +23,14 @@ services:
       - "8082:8080"
 
   transaction-manager:
-    image: rodrigotopan/rinha-backend-transaction-manager:0.0.1
+    image: rodrigotopan/rinha-backend-transaction-manager:0.0.2
     ports:
       - "9000:9000"
-    depends_on:
-      - redis-server
-    environment:
-      - REDIS_CONNECTION_URL=redis://redis-server:6379
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: "150MB"
+          cpus: "0.83"
+          memory: "380MB"
  
   nginx:
     image: nginx:latest
@@ -50,16 +46,6 @@ services:
         limits:
           cpus: "0.17"
           memory: "10MB"
-
-  redis-server:
-    image: redis:alpine
-    ports:
-      - "6379:6379"
-    deploy:
-      resources:
-        limits:
-          cpus: "0.33"
-          memory: "240MB"
 
 networks:
   default:

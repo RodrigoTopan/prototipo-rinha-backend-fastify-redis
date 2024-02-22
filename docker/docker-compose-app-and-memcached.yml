@@ -8,7 +8,7 @@ services:
     depends_on:
       - transaction-manager
     environment:
-      - TRANSACTION_MANAGER_URL=http://transaction-manager:9000
+      - TRANSACTION_MANAGER_URL=http://transaction-manager:11211 # Usando a porta padrão do Memcached
     deploy:
       resources:
         limits:
@@ -19,18 +19,18 @@ services:
     ports:
       - "9000:9000"
     depends_on:
-      - redis-server
+      - memcached
     environment:
-      - REDIS_CONNECTION_URL=redis://redis-server:6379
+      - MEMCACHED_CONNECTION_URL=memcached:11211 # Usando a porta padrão do Memcached
     deploy:
       resources:
         limits:
           cpus: "0.5"
           memory: "150MB"
-  redis-server:
-    image: redis:alpine
+  memcached:
+    image: memcached:alpine # Usando a imagem do Memcached
     ports:
-      - "6379:6379"
+      - "11211:11211" # Mapeamento da porta padrão do Memcached
     deploy:
       resources:
         limits:
